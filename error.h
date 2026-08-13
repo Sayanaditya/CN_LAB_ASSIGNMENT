@@ -5,18 +5,17 @@
 #include <stdint.h>
 #include "frame.h"
 
-/* ---------- Error type codes ---------- */
+// error types
 
-#define ERR_NONE       0   /* no error */
-#define ERR_SINGLE     1   /* single-bit flip */
-#define ERR_TWO_ISOL   2   /* two isolated single-bit flips */
-#define ERR_ODD        3   /* odd number (3) of bit flips */
-#define ERR_BURST      4   /* burst error (contiguous byte flip) */
-#define ERR_CS_FALSE   5   /* word-swap: checksum stays same, CRC catches */
-#define ERR_CRC_FALSE  6   /* G(x) injection: CRC stays same, checksum catches */
+#define ERR_NONE       0   // no error 
+#define ERR_SINGLE     1   // single bit flip
+#define ERR_TWO_ISOL   2   // two isolated single bit flips
+#define ERR_ODD        3   // odd number of bit flips
+#define ERR_BURST      4   // burst error
+#define ERR_CS_FALSE   5   // checksum stays same, CRC catches (word swap)
+#define ERR_CRC_FALSE  6   // CRC stays same, checksum catches
 
-/* ---------- Deterministic error injection ---------- */
-
+// Deterministic error injection
 static inline void inject_error(frame_t *f, int type) {
     uint8_t tmp;
     switch (type) {
@@ -36,13 +35,12 @@ static inline void inject_error(frame_t *f, int type) {
             f->payload[10] = (uint8_t)~f->payload[10];
             break;
         case ERR_CS_FALSE:
-            /* swap two adjacent 16-bit words — checksum is blind to this */
+            // swap two adjacent 16-bit words , checksum will still be evaluated to the same value
             tmp = f->payload[0]; f->payload[0] = f->payload[2]; f->payload[2] = tmp;
             tmp = f->payload[1]; f->payload[1] = f->payload[3]; f->payload[3] = tmp;
             break;
         case ERR_CRC_FALSE:
-            /* XOR with G(x) = x^16+x^15+x^2+1 across 3 bytes.
-               CRC remainder stays 0 (ACCEPT), but checksum changes (REJECT). */
+            // XOR with G(x) = x^16+x^15+x^2+1 across 3 bytes. CRC remainder stays 0 (ACCEPT), but checksum changes (REJECT)
             f->payload[10] ^= 0xC0;
             f->payload[11] ^= 0x02;
             f->payload[12] ^= 0x80;
@@ -50,8 +48,7 @@ static inline void inject_error(frame_t *f, int type) {
     }
 }
 
-/* ---------- Randomised error injection ---------- */
-
+// Randomised error injection
 static inline void inject_random_error(frame_t *f, int type) {
     uint8_t tmp;
     int x, y, idx, len, bit;
@@ -110,7 +107,6 @@ static inline void inject_random_error(frame_t *f, int type) {
     }
 }
 
-/* ---------- Human-readable error name ---------- */
 
 static inline const char *err_name(int t) {
     switch (t) {

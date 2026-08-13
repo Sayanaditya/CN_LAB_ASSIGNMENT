@@ -4,23 +4,6 @@ A sender–receiver system that builds 64-byte Ethernet-like frames, computes **
 
 ---
 
-## Table of Contents
-
-- [Project Structure](#project-structure)
-- [How to Compile and Run](#how-to-compile-and-run)
-- [Input / Output Flow](#input--output-flow)
-- [Frame Layout](#frame-layout)
-- [Implementation Highlights](#implementation-highlights)
-  - [16-bit Internet Checksum (RFC 1071)](#1-16-bit-internet-checksum-rfc-1071)
-  - [CRC-16 (Polynomial 0x8005)](#2-crc-16-polynomial-0x8005)
-  - [Error Injection](#3-error-injection)
-  - [Verification at Receiver](#4-verification-at-receiver)
-- [Error Cases and Expected Verdicts](#error-cases-and-expected-verdicts)
-- [Detection Performance Summary](#detection-performance-summary)
-- [Possible Improvements](#possible-improvements)
-
----
-
 ## Project Structure
 
 ```
@@ -30,6 +13,8 @@ assignment1/
 ├── sender.c       # Reads input, builds frames, injects errors, sends over TCP
 ├── receiver.c     # Listens on TCP, receives frames, recomputes FCS, prints verdict
 ├── input.txt      # 11 lines of sample payload data
+├── metrics.py     # Monte Carlo simulation for detection metrics + plot generation
+├── plots/         # Generated metric plots (see below)
 └── README.md      # This file
 ```
 
@@ -253,6 +238,62 @@ uint16_t recv_crc = calc_crc((uint8_t *)&f, HEADER_SIZE + PAYLOAD_SIZE);
 
 ---
 
+## Monte Carlo Detection Metrics
+
+The `metrics.py` script reimplements `calc_checksum` and `calc_crc` in Python and runs **10,000 randomised trials** per test point to measure empirical detection performance.
+
+```bash
+python metrics.py      # generates all plots in plots/
+```
+
+### 1. Detection Rate by Error Type
+
+![Detection rate by error type](plots/detection_by_error_type.png)
+
+- **Both methods achieve 100% detection** for single-bit flips.
+- **CRC-16 achieves 100%** on all standard error classes (1-bit, 2-bit, odd, burst up to 16 bits).
+- **Checksum drops to ~96.9%** on 2-bit flips — two flips can occasionally cancel each other out in the 16-bit word sum.
+- **Word-swap errors**: Checksum has a **0% detection rate** (completely blind), while CRC catches all of them.
+- **G(x)-multiple errors**: CRC has a **0% detection rate** (completely blind), while Checksum catches all of them.
+
+### 2. False Accept Rate by Error Type
+
+![False accept summary](plots/false_accept_summary.png)
+
+- Checksum false-accepts **100% of word-swap errors** — its fundamental weakness.
+- CRC false-accepts **100% of G(x)-multiple errors** — its fundamental weakness.
+- For standard random errors (bit flips, bursts), both have negligible false-accept rates (<0.01% for CRC, ~3% for Checksum on 2-bit errors).
+
+### 3. Detection Rate vs Number of Bit Flips
+
+![Detection vs bit flips](plots/detection_vs_bit_flips.png)
+
+- **CRC-16 stays at or very near 100%** regardless of how many bits are flipped.
+- **Checksum detection dips slightly** for even numbers of flips (two errors can cancel in the word-sum) but recovers as more bits are flipped (cancellation becomes statistically unlikely).
+- Both methods converge to ~100% detection for large numbers of random bit flips.
+
+### 4. Detection Rate vs Burst Error Length
+
+![Detection vs burst length](plots/detection_vs_burst_length.png)
+
+- **CRC-16 guarantees 100% detection for bursts ≤ 16 bits** (the gold vertical line marks this boundary).
+- Beyond 16 bits, CRC detection remains very high (~99.997%) but is no longer guaranteed.
+- **Checksum detection stays above 99.9%** for bursts but without any hard guarantee at any length.
+
+### Empirical Results Summary (10,000 trials)
+
+| Error Type          | Checksum Detection | CRC-16 Detection | Checksum False-Accept | CRC-16 False-Accept |
+|:--------------------|:------------------:|:----------------:|:---------------------:|:-------------------:|
+| 1-bit flip          | 100.00%            | 100.00%          | 0.00%                 | 0.00%               |
+| 2-bit flip          | 96.89%             | 100.00%          | 3.11%                 | 0.00%               |
+| 3-bit (odd)         | 99.76%             | 100.00%          | 0.24%                 | 0.00%               |
+| 8-bit burst         | 100.00%            | 100.00%          | 0.00%                 | 0.00%               |
+| 16-bit burst        | 99.99%             | 100.00%          | 0.01%                 | 0.00%               |
+| Word swap (CS-blind)| 0.00%              | 100.00%          | **100.00%**           | 0.00%               |
+| G(x) inject (CRC-blind) | 100.00%       | 0.00%            | 0.00%                 | **100.00%**         |
+
+---
+
 ## Possible Improvements
 
 - **Stronger CRC polynomial**: Upgrade to CRC-32 (used in Ethernet, ZIP) for guaranteed detection of all bursts ≤ 32 bits and better random-error coverage (~1 in 4 billion miss rate).
@@ -260,4 +301,3 @@ uint16_t recv_crc = calc_crc((uint8_t *)&f, HEADER_SIZE + PAYLOAD_SIZE);
 - **Sequence numbers and ACK/NAK**: Currently the sender fire-and-forgets. Adding ARQ (Automatic Repeat reQuest) with timeouts would allow retransmission of rejected frames.
 - **Larger payload support**: The 44-byte fixed payload limits practical use. Variable-length payloads with a length field would be more realistic.
 - **UDP mode**: TCP already provides its own error detection (TCP checksum) and reliable delivery. Testing over raw UDP would better demonstrate the frame-level error detection since TCP masks transport errors.
-- **Statistical testing**: Run thousands of randomised frames (using `inject_random_error`) and compute empirical false-accept rates for both schemes to quantify real-world detection performance.

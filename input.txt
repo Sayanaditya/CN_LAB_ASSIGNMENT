@@ -1,0 +1,11 @@
+Hello World! Checksum and CRC test.
+Testing single bit error detection!
+Two isolated bit errors in this msg
+Three errors for odd number test!!
+Burst error test: 8 bits flipped!
+Clean frame number six, no errors
+Swap test for checksum false accept
+Another single bit flip test here
+Burst of four bits for final check
+Last clean frame - HERE NO error
+Here CRC accepts, checksum rejects 
